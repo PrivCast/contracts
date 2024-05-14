@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use cosmwasm_std::{Addr, Binary};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use crate::state::{Poll};
@@ -7,7 +8,9 @@ use crate::state::{Poll};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
-
+    pub gateway_address: Addr,
+    pub gateway_hash: String,
+    pub gateway_key: Binary,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]

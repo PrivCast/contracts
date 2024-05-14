@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use secret_toolkit_storage::Item;
 use serde::{Deserialize, Serialize};
-use cosmwasm_std::{ Timestamp};
 use schemars::JsonSchema;
-
+use cosmwasm_std::{Addr, Binary, Timestamp};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
 pub struct Poll{
@@ -20,5 +19,13 @@ pub struct Polls{
     pub polls: Vec<Poll>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Gateway {
+    pub gateway_address: Addr,
+    pub gateway_hash: String,
+    pub gateway_key: Binary,
+}
+
 pub static POLL_COUNT: Item<u64> = Item::new(b"poll_count");
 pub static POLLS: Item<Polls> = Item::new(b"polls");
+pub static CONFIG: Item<Gateway> = Item::new(b"config");

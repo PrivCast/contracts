@@ -5,7 +5,7 @@ use cosmwasm_std::{
 };
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, PollCountResponse,PollResponse, QueryMsg, ResultsResponse, VoteCountResponse, HasVotedResponse};
-use crate::state::{ Poll, Polls,POLL_COUNT, POLLS};
+use crate::state::{ Gateway, Poll, Polls, CONFIG, POLLS, POLL_COUNT};
 
 #[entry_point]
 pub fn instantiate(
@@ -14,6 +14,14 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
+
+    let state = Gateway {
+        gateway_address: msg.gateway_address,
+        gateway_hash: msg.gateway_hash,
+        gateway_key: msg.gateway_key,
+    };
+
+    CONFIG.save(deps.storage, &state)?;
 
     deps.api
         .debug(format!("Contract was initialized by {}", info.sender).as_str());
