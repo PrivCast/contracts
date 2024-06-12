@@ -6,7 +6,10 @@ use cosmwasm_std::{
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, PollCountResponse,PollResponse, QueryMsg, ResultsResponse, VoteCountResponse, HasVotedResponse};
 use crate::state::{ Gateway, Poll, Polls, CONFIG, POLLS, POLL_COUNT};
-
+use tnls::{
+    msg::{PostExecutionMsg, PrivContractHandleMsg},
+    state::Task,
+};
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -39,6 +42,14 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
 
 pub fn try_create_poll(deps: DepsMut,env: Env, poll_uri: String, validity: u64) -> StdResult<Response> {
       // Update decrypted_votes logic
+      let gateway_key = CONFIG.load(deps.storage)?.gateway_key;
+      deps.api
+      .secp256k1_verify(
+          msg.input_hash.as_slice(),
+          msg.signature.as_slice(),
+          gateway_key.as_slice(),
+      )
+      .map_err(|err| StdError::generic_err(err.to_string()))?;
 
     let mut poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
     let mut polls = POLLS
