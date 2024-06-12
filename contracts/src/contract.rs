@@ -4,12 +4,13 @@ use cosmwasm_std::{
     entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
 };
 
-use crate::msg::{ExecuteMsg, InstantiateMsg, PollCountResponse,PollResponse, QueryMsg, ResultsResponse, VoteCountResponse, HasVotedResponse};
+use crate::msg::{CreatePollInput, ExecuteMsg, HasVotedResponse, InstantiateMsg, PollCountResponse, PollResponse, QueryMsg, ResultsResponse, VoteCountResponse, VoteInput};
 use crate::state::{ Gateway, Poll, Polls, CONFIG, POLLS, POLL_COUNT};
-use tnls::{
-    msg::{PostExecutionMsg, PrivContractHandleMsg},
-    state::Task,
-};
+use secret_toolkit::utils::pad_handle_result;
+use tnls::msg::PrivContractHandleMsg;
+
+pub const BLOCK_SIZE: usize = 256;
+
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -34,23 +35,39 @@ pub fn instantiate(
 
 #[entry_point]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
-    match msg {
-        ExecuteMsg::CreatePoll { poll_uri , validity} => try_create_poll(deps, env, poll_uri, validity),
-        ExecuteMsg::Vote {farcaster_id,poll_id, vote } => try_vote(deps, env, info, poll_id, farcaster_id, vote),
+    let response = match msg {
+        ExecuteMsg::Input { message } => try_handle(deps, env, info, message),
+    };
+    pad_handle_result(response, BLOCK_SIZE)
+}
+
+fn try_handle(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: PrivContractHandleMsg,
+) -> StdResult<Response> {
+    let gateway_key = CONFIG.load(deps.storage)?.gateway_key;
+    deps.api
+      .secp256k1_verify(
+          msg.input_hash.as_slice(),
+          msg.signature.as_slice(),
+          gateway_key.as_slice(),
+      )
+      .map_err(|err| StdError::generic_err(err.to_string()))?;
+    let handle = msg.handle.as_str();
+    match handle {
+        "create_proposal" => try_create_poll(deps, env, msg.input_values),
+        "create_vote" => try_vote(deps, env, info, msg.input_values),
+
+        _ => Err(StdError::generic_err("invalid handle".to_string())),
     }
 }
 
-pub fn try_create_poll(deps: DepsMut,env: Env, poll_uri: String, validity: u64) -> StdResult<Response> {
-      // Update decrypted_votes logic
-      let gateway_key = CONFIG.load(deps.storage)?.gateway_key;
-    //   deps.api
-    //   .secp256k1_verify(
-    //       msg.input_hash.as_slice(),
-    //       msg.signature.as_slice(),
-    //       gateway_key.as_slice(),
-    //   )
-    //   .map_err(|err| StdError::generic_err(err.to_string()))?;
+pub fn try_create_poll(deps: DepsMut,env: Env, input_values: String ) -> StdResult<Response> {
 
+    let input: CreatePollInput = serde_json_wasm::from_str(&input_values)
+        .map_err(|err| StdError::generic_err(err.to_string()))?;
     let mut poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
     let mut polls = POLLS
       .load(deps.storage)
@@ -60,9 +77,9 @@ pub fn try_create_poll(deps: DepsMut,env: Env, poll_uri: String, validity: u64) 
 
     polls.polls.push(Poll{
         id: poll_count as u64,
-        uri: poll_uri,
+        uri: input.poll_uri,
         created_at: env.block.time,
-        validity: validity,
+        validity: input.validity,
         votes: HashMap::new(),
         has_voted: HashMap::new(),
         vote_count: 0,
@@ -79,8 +96,11 @@ pub fn try_create_poll(deps: DepsMut,env: Env, poll_uri: String, validity: u64) 
 }
 
 
-pub fn try_vote(deps: DepsMut, env: Env, info: MessageInfo, poll_id: u64, farcaster_id: u64, vote: u64) -> StdResult<Response> {
-    let mut poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
+pub fn try_vote(deps: DepsMut, env: Env, _info: MessageInfo, input_values: String) -> StdResult<Response> {
+
+    let input: VoteInput = serde_json_wasm::from_str(&input_values)
+        .map_err(|err| StdError::generic_err(err.to_string()))?;
+    let poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
     let mut polls = POLLS
       .load(deps.storage)
       .unwrap_or(Polls {
@@ -88,23 +108,23 @@ pub fn try_vote(deps: DepsMut, env: Env, info: MessageInfo, poll_id: u64, farcas
       });
    
     // check if poll exists
-    if poll_id >= poll_count {
+    if input.poll_id >= poll_count {
         return Err(StdError::generic_err("Invalid poll id"));
     }
 
-    if let Some(poll) = polls.polls.get_mut(poll_id as usize) {
+    if let Some(poll) = polls.polls.get_mut(input.poll_id as usize) {
         // check if voting is live
         if env.block.time.seconds() > poll.created_at.seconds() + poll.validity {
             return Err(StdError::generic_err("Voting has ended"));
         }
         
         // check if already voted
-        if poll.has_voted.contains_key(&farcaster_id) {
+        if poll.has_voted.contains_key(&input.farcaster_id) {
             return Err(StdError::generic_err("Already voted")); 
         }
     
-        poll.votes.insert(vote, poll.votes.get(&vote).unwrap_or(&0) + 1);
-        poll.has_voted.insert(farcaster_id, true);
+        poll.votes.insert(input.vote, poll.votes.get(&input.vote).unwrap_or(&0) + 1);
+        poll.has_voted.insert(input.farcaster_id, true);
     
         POLLS.save(deps.storage, &polls)?;
     }else{
@@ -123,17 +143,17 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetVoteCount {poll_id} => to_binary(&query_vote_count(deps, poll_id)?),
         QueryMsg::GetResults {poll_id} => to_binary(&query_get_results(deps, poll_id)?),  
         QueryMsg::GetVoted {poll_id, farcaster_id} => to_binary(&query_check_voted(deps, poll_id, farcaster_id)?),
+        QueryMsg::GetPoll {poll_id} => to_binary(&query_get_poll(deps, poll_id)?),
     }
 }
 
 fn query_poll_count(deps: Deps) -> StdResult<PollCountResponse> {
-    let mut poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
+    let poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
     Ok(PollCountResponse { poll_count: poll_count })
 }
 
 fn query_vote_count(deps: Deps, poll_id: u64) -> StdResult<VoteCountResponse> {
-    let mut poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
-    let mut polls = POLLS
+    let  polls = POLLS
       .load(deps.storage)
       .unwrap_or(Polls {
           polls: Vec::new(),
@@ -143,7 +163,7 @@ fn query_vote_count(deps: Deps, poll_id: u64) -> StdResult<VoteCountResponse> {
 }
 
 fn query_check_voted(deps: Deps, poll_id: u64, farcaster_id: u64) -> StdResult<HasVotedResponse> {
-    let mut polls = POLLS
+    let  polls = POLLS
     .load(deps.storage)
     .unwrap_or(Polls {
         polls: Vec::new(),
@@ -153,8 +173,7 @@ fn query_check_voted(deps: Deps, poll_id: u64, farcaster_id: u64) -> StdResult<H
 }
 
 fn query_get_results(deps: Deps, poll_id: u64) -> StdResult<ResultsResponse> {
-    let mut poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
-    let mut polls = POLLS
+    let  polls = POLLS
       .load(deps.storage)
       .unwrap_or(Polls {
           polls: Vec::new(),
@@ -165,8 +184,7 @@ fn query_get_results(deps: Deps, poll_id: u64) -> StdResult<ResultsResponse> {
 
 
 fn query_get_poll(deps: Deps, poll_id: u64) -> StdResult<PollResponse> {
-    let mut poll_count=POLL_COUNT.load(deps.storage).unwrap_or(0);
-    let mut polls = POLLS
+    let polls = POLLS
       .load(deps.storage)
       .unwrap_or(Polls {
           polls: Vec::new(),

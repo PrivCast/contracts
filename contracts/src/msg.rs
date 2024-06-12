@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use cosmwasm_std::{Addr, Binary};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use crate::state::{Poll};
+use tnls::PrivContractHandleMsg;
+use crate::state::Poll;
 
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
@@ -14,10 +15,22 @@ pub struct InstantiateMsg {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
+pub struct CreatePollInput {
+    pub poll_uri: String,
+    pub validity: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
+pub struct VoteInput {
+    pub poll_id: u64,
+    pub farcaster_id: u64,
+    pub vote: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    CreatePoll { poll_uri: String, validity: u64 },
-    Vote { poll_id: u64, vote: u64 , farcaster_id: u64 },
+    Input { message: PrivContractHandleMsg },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
@@ -27,6 +40,7 @@ pub enum QueryMsg {
     GetPollCount {},
     GetVoteCount {poll_id: u64},
     GetVoted {poll_id: u64, farcaster_id: u64},
+    GetPoll {poll_id: u64},
 }
 
 // We define a custom struct for each query response
