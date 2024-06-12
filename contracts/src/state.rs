@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use secret_toolkit_storage::Item;
+use secret_toolkit::storage::Item;
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 use cosmwasm_std::{Addr, Binary, Timestamp};
