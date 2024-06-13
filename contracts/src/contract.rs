@@ -57,9 +57,8 @@ fn try_handle(
       .map_err(|err| StdError::generic_err(err.to_string()))?;
     let handle = msg.handle.as_str();
     match handle {
-        "create_proposal" => try_create_poll(deps, env, msg.input_values),
-        "create_vote" => try_vote(deps, env, info, msg.input_values),
-
+        "create_poll" => try_create_poll(deps, env, msg.input_values),
+        "cast_vote" => try_vote(deps, env, info, msg.input_values),
         _ => Err(StdError::generic_err("invalid handle".to_string())),
     }
 }
