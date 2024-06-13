@@ -80,7 +80,7 @@ let instantiate_contract = async () => {
       sender: wallet.address,
       code_hash: contractCodeHash,
       init_msg: init,
-      label: "Testing Snake Path " + Math.ceil(Math.random() * 10000),
+      label: "Initializing Privcast " + Math.ceil(Math.random() * 10000),
     },
     {
       gasLimit: 400_000,
